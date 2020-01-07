@@ -1,0 +1,77 @@
+### NGS quality pre-processing pipeline using Cutadapt and Sickle
+### Important to modify: path to executables, first input name, and adapter sequence
+### usage python Quality_processing.py WorkingDirectory SampleID 
+
+import os
+import sys
+import subprocess
+import time
+
+start=time.time()
+
+################
+# Function definition 
+################
+
+WD = sys.argv[1]
+SampleID = sys.argv[2]
+
+###DEFINING FUNCTIONS###
+#Create directory if it doesn't exist yet
+def newDir(path,dirname):                                       #name of the function and variables
+        if not os.path.exists(path+dirname):
+                os.makedirs(path+dirname)
+        return path+'/'+dirname+'/'
+
+#Run line (when using a process with another program)
+def run_cline(cline):
+        """this first function runs one cline as a subprocess"""
+        return subprocess.call(cline, shell=True)        
+
+#path to executables
+cutadapt_exe = "~/cutadapt/2.3/bin/cutadapt"
+sickle_exe = "~/sickle"
+
+#Output directories
+output_dir1 = newDir(WD, "Cutadapt_output")   
+output_dir2 = newDir(WD, "Sickle_output")   
+
+################
+# Cut the adaptors 
+################
+
+input_cutadapt_R1 = sample_ID+"_ME_all_R1_001.fastq.gz"
+input_cutadapt_R2 = sample_ID+"_ME_all_R2_001.fastq.gz"
+output_cutadapt_R1 = output_dir1 + "/" + sample_ID+"_R1_trimmed.fastq.gz"
+output_cutadapt_R2 = output_dir1 + "/" + sample_ID+"_R2_trimmed.fastq.gz"
+adapt1 = GATCGGAAGAGCACACGTCTGAACTCCAGTCAC
+adapt2 = AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT
+
+
+if os.path.exists(output_cutadapt_R1):
+        print "Trimmed file already exists.\nThe trimming will not be re-performed.\n"  
+else:
+        cut_adaptors = "%s -a %s -A %s -o %s -p %s %s %s" % (cutadapt_exe, adapt1, adapt2, outputR1, outputR2, inputR1, inputR2)
+        run_cline(cut_adaptors)
+print "\nAdaptors cut!\n"
+
+################
+# Quality filtering with Sickle 
+################
+
+input_sickle_R1 = output_dir1 + "/" + sample_ID+"_R1_trimmed.fastq.gz"
+input_sickle_R2 = output_dir1 + "/" + sample_ID+"_R2_trimmed.fastq.gz"
+output_sickle_R1 = output_dir2 + "/" + sample_ID+"_R1_trimmed_final.fastq.gz"
+output_sickle_R2 = output_dir2 + "/" + sample_ID+"_R2_trimmed_final.fastq.gz"
+output_sickle_orphan = output_dir2 + "/" + sample_ID+"_orphan_trimmed_final.fastq.gz"
+
+if os.path.exists(output_sickle_R1):
+        print "Final trimmed file already exists.\nThe trimming will not be re-performed.\n"  
+else:
+        quality_filter = "%s pe -f %s -r %s -t sanger -o %s -p %s -s %s --qual-threshold 20 --length-threshold 40"  % (sickle_exe, input_sickle_R1, input_sickle_R2, output_sickle_R1, output_sickle_R2, output_sickle_orphan)
+        run_cline(quality_filter)
+print "\nQuality filtering done!\n"
+
+end=time.time()
+total_time=end-start
+print total_time
