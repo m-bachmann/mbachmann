@@ -1,0 +1,102 @@
+# 1. Change the name so previous samples and the most recently sequenced ones have the same
+###########################################################################################
+
+for i in $(find ./ -type f -name "*Final.fastq" | while read F; do basename $F | rev | cut -c 23- | rev; done | sort | uniq)
+do echo "Changing names of R1"
+mv "$i"_R1_TrimmedFinal.fastq "$i"_R1_trimmed_final.fastq
+echo "Changing names of R2"
+mv "$i"_R2_TrimmedFinal.fastq "$i"_R2_trimmed_final.fastq
+done;
+
+# 2. Generate interleaving scripts for each of the individuals 
+##############################################################
+
+for ID in $(find ./ -type f -name "*.fastq.gz" | while read F; do basename $F | rev | cut -c 24- | rev; done | sort | uniq)
+
+	do echo "#!/bin/bash
+#SBATCH --account=***
+#SBATCH --partition=long
+#SBATCH --job-name=mito_${ID}
+#SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+#SBATCH --mail-user ***
+#SBATCH --mail-type END, FAIL
+
+module add UHTS/Assembler/MITObim/1.9;
+cd ***
+
+python /software/UHTS/Assembler/MITObim/1.9/misc_scripts/interleave-fastqgz-MITOBIM.py ./${ID}_R1_trimmed_final.fastq \
+${ID}_R1_trimmed_final.fastq > ${ID}_interleaved.fastq" > "${ID}.sh"
+
+done
+
+# 3. Make directories for each sample
+#####################################
+
+for ID in $(find ./ -type f -name "*.fastq" | while read F; do basename $F | rev | cut -c 24- | rev; done | sort | uniq)
+	do echo Making directories
+	mkdir RS_${ID}
+done
+
+
+# 4. Reconstruction of the mitochondrial genome
+###############################################
+
+for ID in $(find ./ -type f -name "*.fastq" | while read F; do basename $F | rev | cut -c 24- | rev; done | sort | uniq)
+
+    do echo "#!/bin/bash
+#SBATCH --account=nsalamin_default
+#SBATCH --partition=long
+#SBATCH --job-name=mitogen_${ID}
+#SBATCH --mem=32G
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+#SBATCH --mail-user marianne.bachmannsalvy@unil.ch
+#SBATCH --mail-type END, FAIL
+
+module add UHTS/Assembler/MITObim/1.9;
+cd /scratch/wally/FAC/FBM/DBC/nsalamin/default/mbachmann/1.Aclarkii/Mito_genome
+
+perl /software/UHTS/Assembler/MITObim/1.9/MITObim.pl -start 1 -end 40 --pair yes -sample ${ID} \
+-ref Aclarkii -readpool ${ID}_interleaved.fastq --quick ../Aclarkii_complete_mt_genome.fasta &>log"  > "${ID}.sh"
+
+# 5. Copy all the results to the same directory
+###############################################
+
+ cp $(find -wholename *-Aclarkii_assembly*/*-Aclarkii_out_Aclarkii.unpadded.fasta) All_final/
+ # add the mitochondrial genome of the outgroup to this directory in order to root later the tree
+
+# 6. Circularization of the genome with MARS
+###############################################
+
+#!/bin/bash
+../MARS/mars -a DNA -m 0 -i all_without-.fasta -o all_mars.fasta -l 20 -P 1
+
+# 7.Alignment with clustal Omega
+#################################
+#!/bin/bash
+module add SequenceAnalysis/MultipleSequenceAlignment/clustal-omega/1.2.4;
+
+clustalo -i all_mars.fasta -o ClPe_aligned.fasta
+
+8. Trim poorly aligned regions
+###############################
+#!/bin/bash
+module add SequenceAnalysis/Filtering/trimAl/1.4.1;
+
+trimal -in 17_mars_AkClPe_aligned.fasta -out 18-AkClPe_aligned_trimmed.fasta -automated1
+
+9. Reconstruct the tree
+########################
+#!/bin/bash
+module add Phylogeny/raxml/8.2.12;
+
+raxmlHPC-PTHREADS -m GTRGAMMAI -f a -p 12345 -x 12345 -# 1000 -s 18-AkClPe_aligned_trimmed.fasta  -n T5_with_root -T 8
+
