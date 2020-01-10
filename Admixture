@@ -1,0 +1,33 @@
+# Admixture analysis is based on the .beagle output from ANGSD
+
+
+# Create 1 script for each of the 24 chromosomes 
+################################################
+
+for CHR in {1..24}
+do echo "#!/bin/bash
+#SBATCH --account=***
+#SBATCH --partition=ax-normal
+#SBATCH --job-name=admix${CHR}
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x-%j.err
+#SBATCH --mail-user ***
+#SBATCH --mail-type END, FAIL
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --export=NONE
+#SBATCH --mem=20G
+
+cd /users/mbachma3/axiome/ANGSD/Results/Clarkii/Admix
+
+python pcangsd/pcangsd.py -beagle ./clarkii_${CHR}.beagle.gz -admix -o admix_${CHR} -threads 10" > "pcangsd_${CHR}.sh"
+done
+
+# Submit all 24 scripts simultaneously
+######################################
+for FILE in pca*.sh; do
+echo ${FILE}
+sbatch ${FILE}
+sleep 1
+done
