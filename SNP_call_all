@@ -1,0 +1,27 @@
+#The list of bamfiles must contain for each line the full path to each file (otherwise it won't open the bam file)
+for CHR in {1..24}
+
+do echo "#!/bin/bash
+#SBATCH --job-name=snp_${CHR}
+#SBATCH --partition=ax-long
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
+#SBATCH --mail-user #adresss
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=15
+#SBATCH --time 5-00:00:00
+#SBATCH --export=NONE
+#SBATCH --mem=60G
+
+module load Bioinformatics/Software/vital-it;
+module add UHTS/Analysis/ANGSD/0.921;
+
+cd ~/mbachmann/ANGSD
+
+angsd -b ./input_files/clarkii_akind_bam.txt -out ./Results/Akindynos/angsd_p1e6_filter_${CHR} -r chr${CHR} -anc ./Apercula_Genome_V1.fasta \
+-ref ./Apercula_Genome_V1.fasta -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 \
+-trim 0 -C 50 -baq 1 -minMapQ 20 -minQ 20 -minInd 80 -nThreads 4 -GL 1 -doMajorMinor 1 \
+-doMaf 2 -skipTriallelic 1 -SNP_pval 1e-6 -doGeno 40 -doPost 1 -doGlf 2" > "ANGSD_${CHR}.sh"
+
+done
