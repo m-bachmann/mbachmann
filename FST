@@ -1,0 +1,118 @@
+# This script indicates how to call variants with ANGSD, transform them in .vcf and then estimate pairwise FST (mean and in windows)
+
+
+## 1. Prepare scripts per chromosome to output the files needed for VCF conversion
+
+for CHR in {1..24}
+
+do echo "#!/bin/bash
+#SBATCH --job-name=snp_${CHR}
+#SBATCH --partition=ax-long
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
+#SBATCH --mail-user #account
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=20
+#SBATCH --time 5-00:00:00
+#SBATCH --export=NONE
+#SBATCH --mem=60G
+
+module load Bioinformatics/Software/vital-it;
+module add UHTS/Analysis/ANGSD/0.921;
+
+cd ~/mbachmann/ANGSD
+
+Results/Akindynos
+
+angsd -b ./input_files/clarkii_akind_bam_corr.txt -out ./Results/Akindynos/TreeMix_input/angsd_p1e6_filter_${CHR} -r chr${CHR} -anc ./Apercula_Genome_V1.fasta \
+-ref ./Apercula_Genome_V1.fasta -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 \
+-trim 0 -C 50 -baq 1 -minMapQ 20 -minQ 20 -minInd 80 -nThreads 16 -GL 1 -doMajorMinor 1 \
+-doMaf 2 -SNP_pval 1e-6 -doGeno 3 -doPost 1 -doCounts 1 -dumpCounts 2" > "ANGSD_${CHR}.sh"
+done
+
+## Automatize Job Submission
+for FILE in ANGSD*.sh; do
+echo ${FILE}
+sbatch ${FILE}
+sleep 1
+done
+
+####################################
+# 2. Conversion to .vcf using  https://github.com/rcristofari/RAD-Scripts/blob/master/angsd2vcf.R
+
+for CHR in {1..24}
+
+do echo "#!/bin/bash
+#SBATCH --job-name=vcf${CHR}
+#SBATCH --partition=ax-normal
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
+#SBATCH --mail-user #account
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=15
+#SBATCH --export=NONE
+#SBATCH --mem=60G
+
+module load Bioinformatics/Software/vital-it;
+module add R/3.6.1;
+
+cd /users/mbachma3/axiome/ANGSD/Results/Akindynos/TreeMix_input
+
+Rscript angsd2vcf.R --bam=/users/mbachma3/axiome/ANGSD/input_files/clarkii_akind_bam_corr.txt --geno=./angsd_p1e6_filter_${CHR}.geno.gz --counts=./angsd_p1e6_filter_${CHR}.counts.gz --out=./angsd_p1e6_filter_${CHR}.vcf" > "angsd2vcf${CHR}.sh"
+
+done
+
+###########################
+# 3. After merging all the .vcf together to all.vcf and manually adding the length of each chromosome at the beginning of the file, 
+# missing data is removed to obtain the final vcf. 
+
+#!/bin/bash
+module add UHTS/Analysis/vcftools/0.1.15;
+
+/users/mbachma3/axiome/ANGSD/Results/Akindynos/TreeMix_input
+
+vcftools --vcf all.vcf --max-missing 1 --recode --stdout | gzip > all.noN.vcf.gz
+
+############################
+# 4. Mean FST
+
+# For the mean FST, the full dataset is used. The -vcf file is subset into different populations in the command; each population
+# is represented by a file in the same directory that contains the names of the individuals collected in that sampling location; 
+# here, only one example is represented (PNG against PH). However, all the pairwise comparisons have to be performed. 
+# The FST value computed is displayed in the job output file
+
+#!/bin/bash
+module add UHTS/Analysis/vcftools/0.1.15;
+
+vcftools --gzvcf all.noN.vcf.gz --weir-fst-pop PNG --weir-fst-pop PH --out ./PNG_PH
+
+#############################
+
+# 5. Pruning for windowed FST analysis
+# Output a file of linked sites (calculated in 200 kb windows, 5 kb steps and with a r^2 cutoff 0.2)
+
+#!/bin/bash
+module add UHTS/Analysis/vcftools/0.1.15;
+module add UHTS/Analysis/plink/1.90;
+plink --vcf youvcf.vcf --allow-extra-chr --indep-pairwise 200 5 0.2 --set-missing-var-ids @:#
+
+# Extract the linked sites from the dataset
+
+#!/bin/bash
+module add UHTS/Analysis/vcftools/0.1.15;
+module add UHTS/Analysis/plink/1.90;
+plink --vcf all.noN.vcf.gz  --allow-extra-chr --extract plink.prune.in --recode vcf --keep-allele-order --set-missing-var-ids @:#
+
+#############################
+
+# 6. Use the pruned dataset to calculat windowed-pairwise FST
+# For example, windowed FST between Kaafu and PNG
+
+#!/bin/bash
+module add UHTS/Analysis/vcftools/0.1.15;
+vcftools --gzvcf plink.vcf.gz --weir-fst-pop Kaafu --weir-fst-pop PNG --fst-window-size 50000 --fst-window-step 5000 --out ./Kaafu_PNG-wdw
+
+
+
