@@ -1,0 +1,20 @@
+# To use in R
+library(ggplot2)
+library(vegan)
+
+distances <- read.delim("~/distances.txt", header=FALSE)
+gendist <- read.delim("~/gendist.txt", header=FALSE)
+
+dist<-as.dist(distances); gen<-as.dist(gendist)
+summary(lm(gen~dist))$coef
+
+# Colors represent the within cluster and between cluster population comparisons
+plt <- c(rep("royalblue3", 5), rep("purple3",3),rep("royalblue3", 4), rep("purple3",3),rep("royalblue3", 3), rep("purple3",3),rep("royalblue3",2), rep("purple3",3),rep("royalblue3", 1), rep("purple3",3),rep("purple3",3), rep("orangered4",3))
+
+scatterplot<-qplot(x=dist, y=gen)+xlab("Eculidean pairwise distance (km)")+ylab("Pairwise weighted FST")+
+  geom_point(color=plt,size=3)+
+  stat_smooth(method="lm",se=FALSE,linetype="dashed",color="grey29")
+scatterplot + theme(axis.title.x = element_text(size = 14),axis.title.y = element_text(size = 14), axis.text.x= element_text(size =10), axis.text.y= element_text(size = 10))
+
+# Mantel statistic based on Pearson's product-moment correlation; library VEGAN 
+MT<-mantel(ydis=gen, xdis=dist, permutations=10000) 
